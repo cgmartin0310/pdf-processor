@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings</title>
+</head>
+<body>
+    <h1>Application Settings</h1>
+    <form method="POST" action="/settings">
+        <div>
+            <label for="to_email">To Email:</label>
+            <input type="text" id="to_email" name="to_email" value="{{ settings.get('to_email', '') }}">
+        </div>
+        <div>
+            <label for="openai_api_key">OpenAI API Key:</label>
+            <input type="text" id="openai_api_key" name="openai_api_key" value="{{ settings.get('OPENAI_API_KEY', '') }}">
+        </div>
+        <div>
+            <label for="sendgrid_api_key">SendGrid API Key:</label>
+            <input type="text" id="sendgrid_api_key" name="sendgrid_api_key" value="{{ settings.get('SENDGRID_API_KEY', '') }}">
+        </div>
+        <div>
+            <label for="sendgrid_from_email">SendGrid From Email:</label>
+            <input type="text" id="sendgrid_from_email" name="sendgrid_from_email" value="{{ settings.get('SENDGRID_FROM_EMAIL', '') }}">
+        </div>
+        <button type="submit">Save</button>
+    </form>
+</body>
+</html>
+
