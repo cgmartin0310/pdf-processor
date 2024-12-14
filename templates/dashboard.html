@@ -116,6 +116,11 @@
                     <th>DOB</th>
                     <th>Phone Number</th>
                     <th>Insurance Name</th>
+                    <th>Fax Receive Date</th>
+                    <th>Referring Doctor</th>
+                    <th>Referring Clinic</th>
+                    <th>Referring Phone</th>
+                    <th>Referring Fax</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -126,8 +131,13 @@
                     <td>{{ referral.dob }}</td>
                     <td>{{ referral.phone_number }}</td>
                     <td>{{ referral.insurance_name }}</td>
+                    <td>{{ referral.fax_receive_date }}</td>
+                    <td>{{ referral.referring_doctor_name }}</td>
+                    <td>{{ referral.referring_clinic_name }}</td>
+                    <td>{{ referral.referring_phone_number }}</td>
+                    <td>{{ referral.referring_fax_number }}</td>
                     <td>
-                        <button class="btn btn-edit" onclick="openEditModal({{ referral.id }}, '{{ referral.patient_name }}', '{{ referral.dob }}', '{{ referral.phone_number }}', '{{ referral.insurance_name }}')">Edit</button>
+                        <button class="btn btn-edit" onclick="openEditModal({{ referral.id }}, '{{ referral.patient_name }}', '{{ referral.dob }}', '{{ referral.phone_number }}', '{{ referral.insurance_name }}', '{{ referral.fax_receive_date }}', '{{ referral.referring_doctor_name }}', '{{ referral.referring_clinic_name }}', '{{ referral.referring_phone_number }}', '{{ referral.referring_fax_number }}')">Edit</button>
                         <form action="/delete/{{ referral.id }}" method="POST" style="display:inline;">
                             <button type="submit" class="btn btn-delete">Delete</button>
                         </form>
@@ -144,35 +154,25 @@
             <span class="close" onclick="closeEditModal()">&times;</span>
             <h2>Edit Referral</h2>
             <form id="editForm" method="POST">
+                {% for field in ['patient_name', 'dob', 'phone_number', 'insurance_name', 'fax_receive_date', 'referring_doctor_name', 'referring_clinic_name', 'referring_phone_number', 'referring_fax_number'] %}
                 <div class="form-group">
-                    <label for="patient_name">Patient Name</label>
-                    <input type="text" id="patient_name" name="patient_name" required>
+                    <label for="{{ field }}">{{ field.replace('_', ' ').title() }}</label>
+                    <input type="text" id="{{ field }}" name="{{ field }}" required>
                 </div>
-                <div class="form-group">
-                    <label for="dob">DOB</label>
-                    <input type="text" id="dob" name="dob" required>
-                </div>
-                <div class="form-group">
-                    <label for="phone_number">Phone Number</label>
-                    <input type="text" id="phone_number" name="phone_number" required>
-                </div>
-                <div class="form-group">
-                    <label for="insurance_name">Insurance Name</label>
-                    <input type="text" id="insurance_name" name="insurance_name" required>
-                </div>
+                {% endfor %}
                 <button type="submit" class="btn btn-save">Save</button>
             </form>
         </div>
     </div>
 
     <script>
-        function openEditModal(id, patientName, dob, phoneNumber, insuranceName) {
+        function openEditModal(id, patientName, dob, phoneNumber, insuranceName, faxReceiveDate, referringDoctorName, referringClinicName, referringPhoneNumber, referringFaxNumber) {
             document.getElementById('editModal').style.display = 'block';
             document.getElementById('editForm').action = `/edit/${id}`;
-            document.getElementById('patient_name').value = patientName;
-            document.getElementById('dob').value = dob;
-            document.getElementById('phone_number').value = phoneNumber;
-            document.getElementById('insurance_name').value = insuranceName;
+            const fields = { patient_name: patientName, dob, phone_number: phoneNumber, insurance_name: insuranceName, fax_receive_date: faxReceiveDate, referring_doctor_name: referringDoctorName, referring_clinic_name: referringClinicName, referring_phone_number: referringPhoneNumber, referring_fax_number: referringFaxNumber };
+            for (const [key, value] of Object.entries(fields)) {
+                document.getElementById(key).value = value || '';
+            }
         }
 
         function closeEditModal() {
