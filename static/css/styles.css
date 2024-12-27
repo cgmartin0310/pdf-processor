@@ -1,0 +1,38 @@
+/* static/css/styles.css */
+
+body {
+    font-family: 'Questrial', sans-serif;
+    background-color: #f9f9f9;
+}
+
+.modal-content {
+    padding: 20px;
+}
+
+.table th, .table td {
+    vertical-align: middle;
+}
+
+.btn-save {
+    background-color: #4CAF50;
+    border: none;
+}
+
+.btn-save:hover {
+    background-color: #45a049;
+}
+
+/* Style for the application logo in the navbar */
+#app-logo {
+    height: 40px; /* Adjust the height as needed */
+    width: auto;
+    margin-top: 5px; /* Align the logo vertically */
+}
+
+/* Optional: Remove padding from the navbar-brand to better fit the logo */
+.navbar-brand {
+    padding: 0;
+}
+
+/* Additional custom styles can be added here */
+
