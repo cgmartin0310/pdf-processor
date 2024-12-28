@@ -224,30 +224,6 @@ def initialize_database():
     with app.app_context():
         db.create_all()
 
-        # Seed default settings if they don't exist
-        default_settings = [
-            {"field_name": "SENDGRID_FROM_EMAIL", "field_config": json.dumps("chris@goldiehealth.com")},
-            {"field_name": "SENDGRID_TO_EMAIL", "field_config": json.dumps("chris@goldiehealth.com")},
-            {"field_name": "EMAIL_HOST", "field_config": json.dumps("imap.gmail.com")},
-            {"field_name": "EMAIL_PORT", "field_config": json.dumps(993)},
-            {"field_name": "EMAIL_USERNAME", "field_config": json.dumps("referral@goldiehealth.com")},
-            {"field_name": "ENABLE_EMAIL_CSV", "field_config": json.dumps(True)},
-            {"field_name": "CSV_EMAIL_RECIPIENT", "field_config": json.dumps("chris@goldiehealth.com")},
-            {"field_name": "CSV_EMAIL_SUBJECT", "field_config": json.dumps("New Referral Processed")},
-            {"field_name": "CSV_EMAIL_BODY", "field_config": json.dumps("<p>Attached is the processed referral data in CSV format.</p>")},
-            # Adding patient_details and record_details
-            {"field_name": "patient_details", "field_config": json.dumps("name, dob, sex, address, home_phone, day_phone")},
-            {"field_name": "record_details", "field_config": json.dumps("insurance_name, insurance_id")},
-        ]
-
-        for setting in default_settings:
-            existing_setting = Setting.query.filter_by(field_name=setting["field_name"]).first()
-            if not existing_setting:
-                new_setting = Setting(field_name=setting["field_name"], field_config=setting["field_config"])
-                db.session.add(new_setting)
-                logger.info(f"[INFO] Added default setting '{setting['field_name']}'.")
-        db.session.commit()
-        logger.info("[INFO] Default settings ensured.")
 
         # Ensure an admin user exists
         admin_username = os.getenv('ADMIN_USERNAME', 'admin')
@@ -263,8 +239,8 @@ def initialize_database():
 def send_csv_email(forwarding_email, patient_data, record_data):
     try:
         # Fetch SendGrid settings from the database
-        sendgrid_from_email = get_setting("SENDGRID_FROM_EMAIL", "chris@goldiehealth.com")
-        sendgrid_to_email = get_setting("SENDGRID_TO_EMAIL", "chris@goldiehealth.com")
+        sendgrid_from_email = get_setting("SENDGRID_FROM_EMAIL")
+        sendgrid_to_email = get_setting("SENDGRID_TO_EMAIL")
         enable_email_csv = get_setting("ENABLE_EMAIL_CSV", False)
         csv_email_recipient = get_setting("CSV_EMAIL_RECIPIENT", sendgrid_to_email)
         csv_email_subject = get_setting("CSV_EMAIL_SUBJECT", "New Referral Processed")
@@ -421,7 +397,7 @@ def fetch_and_process_emails():
             # Fetch email settings
             email_host = get_setting("EMAIL_HOST", "imap.gmail.com")
             email_port = get_setting("EMAIL_PORT", 993)
-            email_username = get_setting("EMAIL_USERNAME", "referral@goldiehealth.com")
+            email_username = get_setting("EMAIL_USERNAME")
             email_password = os.getenv("EMAIL_PASSWORD")
 
             if not all([email_host, email_port, email_username, email_password]):
@@ -804,5 +780,5 @@ with app.app_context():
 # -------------------------------------------------
 if __name__ == '__main__':
     # Run the Flask app without the reloader to prevent duplicate threads
-    app.run(debug=True, use_reloader=False)
+    app.run(debug=True)
 
