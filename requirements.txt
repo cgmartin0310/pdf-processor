@@ -9,4 +9,5 @@ pytesseract
 pdf2image
 Werkzeug
 email-validator
+psycopg2-binary
 
