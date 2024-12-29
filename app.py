@@ -63,7 +63,7 @@ load_dotenv()
 
 # Configuration
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///db.sqlite3")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max file size
@@ -72,6 +72,8 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_recycle': 1800,  # Recycle connections after 1800 seconds (30 minutes)
     # You can add other options like 'pool_size', 'max_overflow' if needed
 }
+
+
 
 # Initialize Extensions
 db = SQLAlchemy(app)
@@ -190,10 +192,6 @@ class SettingsForm(FlaskForm):
     RECORD_DETAILS = TextAreaField(
         "Record Details (comma-separated)", validators=[DataRequired()]
     )
-    # Adding RECORD_TYPES field
-    RECORD_TYPES = TextAreaField(
-        "Record Types (comma-separated)", validators=[DataRequired()]
-    )
     submit = SubmitField("Save Settings")
 
 
@@ -232,6 +230,7 @@ def admin_required(f):
 def initialize_database():
     with app.app_context():
         db.create_all()
+
 
         # Ensure an admin user exists
         admin_username = os.getenv('ADMIN_USERNAME', 'admin')
@@ -442,23 +441,17 @@ def fetch_and_process_emails():
                                 raw_text = process_pdf(pdf_path)
                                 if raw_text:
                                     # Fetch settings for OpenAI prompt
-                                    patient_setting = get_setting("PATIENT_DETAILS", "")
-                                    record_setting = get_setting("RECORD_DETAILS", "")
+                                    patient_setting = get_setting("patient_details", "")
+                                    record_setting = get_setting("record_details", "")
                                     patient_fields = [field.strip() for field in patient_setting.split(',') if field.strip()]
                                     record_fields = [field.strip() for field in record_setting.split(',') if field.strip()]
-                                    record_types_setting = get_setting("RECORD_TYPES", "")
-                                    record_types = [item.strip() for item in record_types_setting.split(',') if item.strip()]
 
                                     if not patient_fields and not record_fields:
                                         logger.warning("[WARNING] No fields defined for extraction.")
                                         continue
 
-                                    if not record_types:
-                                        # Default record types
-                                        record_types = ["Referral", "Patient Intake", "Medical Records Request", "Signed Plan of Care"]
-
                                     # Generate OpenAI prompt
-                                    prompt = generate_openai_prompt(raw_text, patient_fields, record_fields, record_types)
+                                    prompt = generate_openai_prompt(raw_text, patient_fields, record_fields)
 
                                     # Call OpenAI API using ChatCompletion
                                     try:
@@ -469,31 +462,24 @@ def fetch_and_process_emails():
                                                 {"role": "user", "content": prompt}
                                             ],
                                             temperature=0,
-                                            max_tokens=1000  # Increased max_tokens to accommodate larger responses
+                                            max_tokens=500
                                         )
                                         extracted_data = response.choices[0].message['content'].strip()
                                         data_json = json.loads(extracted_data)
                                         logger.info(f"[INFO] OpenAI extracted data: {data_json}")
 
-                                        # Validate and Normalize Record Type
-                                        valid_record_types = record_types
-                                        record_type = data_json.get("record_type", "").strip()
-                                        if record_type not in valid_record_types:
-                                            logger.warning(f"[WARNING] Invalid record type '{record_type}'. Defaulting to 'Unknown'.")
-                                            record_type = "Unknown"
-
                                         # Normalize and save data
                                         referral = Referral(
-                                            record_type=record_type,
+                                            record_type=data_json.get("record_type", "Unknown"),
                                             patient_details=json.dumps(data_json.get("patient_details", {})),
                                             record_details=json.dumps(data_json.get("record_details", {}))
                                         )
                                         db.session.add(referral)
                                         db.session.commit()
-                                        logger.info(f"[INFO] Referral saved with ID {referral.id} and record type '{record_type}'.")
+                                        logger.info(f"[INFO] Referral saved with ID {referral.id}.")
 
                                         # Send CSV email with both Patient Details and Record Details
-                                        forwarding_email = get_setting("SENDGRID_TO_EMAIL", "you@example.com")
+                                        forwarding_email = get_setting("SENDGRID_TO_EMAIL", "chris@goldiehealth.com")
                                         send_csv_email(forwarding_email, data_json.get("patient_details", {}), data_json.get("record_details", {}))
 
                                     except Exception as e:
@@ -521,21 +507,20 @@ def process_pdf(pdf_path, dpi=200):
         return None
 
 
-def generate_openai_prompt(text, patient_fields, record_fields, record_types):
+def generate_openai_prompt(text, patient_fields, record_fields):
     patient_prompts = ', '.join(patient_fields)
     record_prompts = ', '.join(record_fields)
 
     prompt = f"""
-Based on the following text, determine the record type from the following options: {', '.join(record_types)}.
-Then, extract the following patient details: {patient_prompts}.
-Also, extract the following record details: {record_prompts}.
+Extract the following patient details from the text: {patient_prompts}.
+Extract the following record details: {record_prompts}.
 
 Text:
 {text}
 
 Format the output as JSON:
 {{
-    "record_type": "",  # One of {', '.join(record_types)}
+    "record_type": "Referral",
     "patient_details": {{
         {', '.join([f'"{field}": ""' for field in patient_fields])}
     }},
@@ -546,134 +531,261 @@ Format the output as JSON:
 """
     return prompt
 
+
+def email_scheduler(interval=300):
+    while True:
+        logger.info("[INFO] Starting email fetch and processing cycle.")
+        fetch_and_process_emails()
+        logger.info(f"[INFO] Email fetch and processing cycle completed. Sleeping for {interval} seconds.")
+        time.sleep(interval)  # Wait for the specified interval before fetching again
+
+
 # -------------------------------------------------
-# Flask Routes
+# Routes
 # -------------------------------------------------
+
 @app.route('/')
-def index():
-    return redirect(url_for('login'))
+def home():
+    return redirect(url_for('dashboard'))
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if current_user.is_authenticated:
+        logger.info("User already authenticated. Redirecting to dashboard.")
+        return redirect(url_for('dashboard'))
+    
     form = LoginForm()
     if form.validate_on_submit():
+        logger.info(f"Login form submitted with username: '{form.username.data}'")
         user = User.query.filter_by(username=form.username.data).first()
-        if user and user.check_password(form.password.data):
-            login_user(user, remember=form.remember.data)
-            return redirect(url_for('dashboard'))
+        if user:
+            logger.info(f"User '{user.username}' found in the database.")
+            if user.check_password(form.password.data):
+                login_user(user, remember=form.remember.data)
+                logger.info(f"User '{user.username}' logged in successfully.")
+                flash("Login successful!", "success")
+                return redirect(url_for('dashboard'))
+            else:
+                logger.warning(f"Incorrect password for user '{user.username}'.")
         else:
-            flash('Invalid username or password.', 'danger')
-            logger.warning(f"[WARNING] Invalid login attempt for user '{form.username.data}'.")
+            logger.warning(f"User '{form.username.data}' not found in the database.")
+        flash("Invalid username or password.", "danger")
+    else:
+        if request.method == 'POST':
+            logger.warning(f"Login form validation failed with errors: {form.errors}")
     return render_template('login.html', form=form)
 
-@app.route('/logout')
+
+@app.route('/logout', methods=['POST'])
 @login_required
 def logout():
-    logger.info(f"[INFO] User '{current_user.username}' logged out.")
+    logger.info(f"[INFO] User '{current_user.username}' is logging out.")
     logout_user()
+    flash("You have been logged out.", "info")
     return redirect(url_for('login'))
+
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    referrals = Referral.query.all()
-    return render_template('dashboard.html', referrals=referrals)
+    page = request.args.get('page', 1, type=int)
+    per_page = 10  # Number of referrals per page
+    search_query = request.args.get('search', '', type=str)
 
-@app.route('/settings', methods=['GET', 'POST'])
+    if search_query:
+        referrals_paginated = Referral.query.filter(
+            Referral.record_type.ilike(f'%{search_query}%') |
+            Referral.patient_details.ilike(f'%{search_query}%') |
+            Referral.record_details.ilike(f'%{search_query}%')
+        ).order_by(Referral.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        logger.info(f"[INFO] Dashboard accessed with search query: '{search_query}'")
+    else:
+        referrals_paginated = Referral.query.order_by(Referral.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        logger.info("[INFO] Dashboard accessed without search query.")
+
+    # Deserialize JSON fields for display
+    referrals = []
+    for referral in referrals_paginated.items:
+        try:
+            patient_details = json.loads(referral.patient_details) if referral.patient_details else {}
+        except json.JSONDecodeError:
+            patient_details = {}
+            logger.error(f"[ERROR] Failed to decode patient_details for Referral ID {referral.id}")
+
+        try:
+            record_details = json.loads(referral.record_details) if referral.record_details else {}
+        except json.JSONDecodeError:
+            record_details = {}
+            logger.error(f"[ERROR] Failed to decode record_details for Referral ID {referral.id}")
+
+        referrals.append({
+            "id": referral.id,
+            "record_type": referral.record_type,
+            "patient_details": patient_details,
+            "record_details": record_details,
+        })
+
+    return render_template('dashboard.html', referrals=referrals, pagination=referrals_paginated, search_query=search_query)
+
+
+# -------------------------------------------------
+# New Route: Manage Settings
+# -------------------------------------------------
+@app.route('/settings', methods=['GET', 'POST'], endpoint='settings_route')
 @login_required
 @admin_required
-def settings():
+def settings_route():
     form = SettingsForm()
     if form.validate_on_submit():
-        settings_fields = [
-            'SENDGRID_FROM_EMAIL', 'SENDGRID_TO_EMAIL',
-            'EMAIL_HOST', 'EMAIL_PORT', 'EMAIL_USERNAME',
-            'ENABLE_EMAIL_CSV', 'CSV_EMAIL_RECIPIENT',
-            'CSV_EMAIL_SUBJECT', 'CSV_EMAIL_BODY',
-            'PATIENT_DETAILS', 'RECORD_DETAILS', 'RECORD_TYPES'
-        ]
-        for field_name in settings_fields:
-            field_value = getattr(form, field_name).data
+        # Retrieve form data
+        settings_data = {
+            "SENDGRID_FROM_EMAIL": form.SENDGRID_FROM_EMAIL.data,
+            "SENDGRID_TO_EMAIL": form.SENDGRID_TO_EMAIL.data,
+            "EMAIL_HOST": form.EMAIL_HOST.data,
+            "EMAIL_PORT": form.EMAIL_PORT.data,
+            "EMAIL_USERNAME": form.EMAIL_USERNAME.data,
+            "ENABLE_EMAIL_CSV": form.ENABLE_EMAIL_CSV.data,
+            "CSV_EMAIL_RECIPIENT": form.CSV_EMAIL_RECIPIENT.data,
+            "CSV_EMAIL_SUBJECT": form.CSV_EMAIL_SUBJECT.data,
+            "CSV_EMAIL_BODY": form.CSV_EMAIL_BODY.data,
+            "patient_details": form.PATIENT_DETAILS.data,
+            "record_details": form.RECORD_DETAILS.data
+        }
+
+        # Update or create settings in the database
+        for field_name, field_value in settings_data.items():
             setting = Setting.query.filter_by(field_name=field_name).first()
-            if not setting:
-                setting = Setting(field_name=field_name)
-            if isinstance(field_value, bool):
-                # Store booleans as JSON booleans
-                setting.field_config = json.dumps(field_value)
-            elif isinstance(field_value, int):
-                # Store integers as JSON numbers
-                setting.field_config = json.dumps(field_value)
-            else:
-                # Store other types as JSON strings
-                setting.field_config = json.dumps(str(field_value))
-            db.session.add(setting)
-        db.session.commit()
-        flash('Settings have been saved.', 'success')
-        logger.info(f"[INFO] Settings updated by user '{current_user.username}'.")
-        return redirect(url_for('settings'))
-    else:
-        # Load current settings into form
-        settings_fields = [
-            'SENDGRID_FROM_EMAIL', 'SENDGRID_TO_EMAIL',
-            'EMAIL_HOST', 'EMAIL_PORT', 'EMAIL_USERNAME',
-            'ENABLE_EMAIL_CSV', 'CSV_EMAIL_RECIPIENT',
-            'CSV_EMAIL_SUBJECT', 'CSV_EMAIL_BODY',
-            'PATIENT_DETAILS', 'RECORD_DETAILS', 'RECORD_TYPES'
-        ]
-        for field_name in settings_fields:
-            setting_value = get_setting(field_name)
-            if setting_value is not None:
-                field = getattr(form, field_name)
-                if isinstance(setting_value, bool):
-                    field.data = setting_value
-                elif isinstance(setting_value, int):
-                    field.data = setting_value
+            if setting:
+                # For patient_details and record_details, ensure they are stored as comma-separated strings
+                if field_name in ["patient_details", "record_details"]:
+                    if not isinstance(field_value, str):
+                        logger.error(f"[ERROR] '{field_name}' should be a comma-separated string.")
+                        continue
+                    field_config = json.dumps(field_value)
+                elif isinstance(field_value, bool):
+                    field_config = json.dumps(field_value)
+                elif isinstance(field_value, int):
+                    field_config = json.dumps(field_value)
                 else:
-                    field.data = setting_value
+                    field_config = json.dumps(field_value)
+                setting.field_config = field_config
+                logger.info(f"[INFO] Updated setting '{field_name}'.")
+            else:
+                # Create new settings if they don't exist
+                new_setting = Setting(field_name=field_name, field_config=json.dumps(field_value))
+                db.session.add(new_setting)
+                logger.info(f"[INFO] Created new setting '{field_name}'.")
+        try:
+            db.session.commit()
+            flash("Settings updated successfully!", "success")
+            logger.info("[INFO] Settings updated successfully by admin.")
+            return redirect(url_for('settings_route'))
+        except Exception as e:
+            db.session.rollback()
+            flash("Failed to update settings.", "danger")
+            logger.error(f"[ERROR] Failed to update settings: {e}")
+
+    # Pre-populate form with existing settings on GET request
+    if request.method == 'GET':
+        settings = Setting.query.all()
+        settings_dict = {}
+        for s in settings:
+            try:
+                settings_dict[s.field_name] = json.loads(s.field_config)
+            except json.JSONDecodeError:
+                logger.error(f"[ERROR] Invalid JSON for setting '{s.field_name}'. Setting to empty string.")
+                settings_dict[s.field_name] = ""
+        form.SENDGRID_FROM_EMAIL.data = settings_dict.get("SENDGRID_FROM_EMAIL", "")
+        form.SENDGRID_TO_EMAIL.data = settings_dict.get("SENDGRID_TO_EMAIL", "")
+        form.EMAIL_HOST.data = settings_dict.get("EMAIL_HOST", "")
+        form.EMAIL_PORT.data = settings_dict.get("EMAIL_PORT", 993)
+        form.EMAIL_USERNAME.data = settings_dict.get("EMAIL_USERNAME", "")
+        form.ENABLE_EMAIL_CSV.data = settings_dict.get("ENABLE_EMAIL_CSV", False)
+        form.CSV_EMAIL_RECIPIENT.data = settings_dict.get("CSV_EMAIL_RECIPIENT", "")
+        form.CSV_EMAIL_SUBJECT.data = settings_dict.get("CSV_EMAIL_SUBJECT", "New Referral Processed")
+        form.CSV_EMAIL_BODY.data = settings_dict.get("CSV_EMAIL_BODY", "<p>Attached is the processed referral data in CSV format.</p>")
+        form.PATIENT_DETAILS.data = settings_dict.get("patient_details", "")
+        form.RECORD_DETAILS.data = settings_dict.get("record_details", "")
+        logger.info("[INFO] Settings form pre-populated with existing settings.")
+
     return render_template('settings.html', form=form)
 
-@app.route('/referral/<int:referral_id>/download')
+
+# -------------------------------------------------
+# New Route: Delete a Referral
+# -------------------------------------------------
+@app.route('/referral/delete/<int:referral_id>', methods=['POST'], endpoint='delete_referral')
 @login_required
-def download_referral(referral_id):
+@admin_required
+def delete_referral(referral_id):
     referral = Referral.query.get_or_404(referral_id)
-    csv_file = generate_individual_csv(referral)
-    return send_file(
-        BytesIO(csv_file.getvalue().encode('utf-8')),
-        mimetype='text/csv',
-        as_attachment=True,
-        download_name=f'referral_{referral_id}.csv'  # For Flask >= 2.0
-    )
+    try:
+        db.session.delete(referral)
+        db.session.commit()
+        flash(f"Referral ID {referral_id} has been deleted.", "success")
+        logger.info(f"[INFO] Referral ID {referral_id} deleted by user '{current_user.username}'.")
+    except Exception as e:
+        db.session.rollback()
+        flash("Failed to delete the referral.", "danger")
+        logger.error(f"[ERROR] Failed to delete Referral ID {referral_id}: {e}")
+    return redirect(url_for('dashboard'))
 
-@app.route('/download_all')
+
+# -------------------------------------------------
+# New Route: Download Individual CSV
+# -------------------------------------------------
+@app.route('/download_csv/<int:referral_id>', methods=['GET'], endpoint='download_individual_csv')
 @login_required
-def download_all():
-    referrals = Referral.query.all()
-    csv_file = generate_csv(referrals)
-    return send_file(
-        BytesIO(csv_file.getvalue().encode('utf-8')),
-        mimetype='text/csv',
-        as_attachment=True,
-        download_name='all_referrals.csv'  # For Flask >= 2.0
-    )
+def download_individual_csv(referral_id):
+    referral = Referral.query.get_or_404(referral_id)
+    try:
+        # Generate CSV for the individual referral
+        csv_file = generate_individual_csv(referral)
+
+        # Create a BytesIO object from the CSV string
+        mem = BytesIO()
+        mem.write(csv_file.getvalue().encode('utf-8'))
+        mem.seek(0)
+
+        filename = f"referral_{referral.id}.csv"
+        return send_file(
+            mem,
+            mimetype='text/csv',
+            download_name=filename,
+            as_attachment=True
+        )
+    except Exception as e:
+        flash("Failed to generate CSV.", "danger")
+        logger.error(f"[ERROR] Failed to generate CSV for Referral ID {referral_id}: {e}")
+        return redirect(url_for('dashboard'))
+
 
 # -------------------------------------------------
-# Background Tasks
+# Scheduler to periodically fetch emails
 # -------------------------------------------------
-def email_fetcher_task():
+def email_scheduler(interval=300):
     while True:
-        logger.info("[INFO] Starting email fetch and process task.")
+        logger.info("[INFO] Starting email fetch and processing cycle.")
         fetch_and_process_emails()
-        logger.info("[INFO] Email fetch and process task completed. Sleeping for 5 minutes.")
-        time.sleep(300)  # Sleep for 5 minutes
+        logger.info(f"[INFO] Email fetch and processing cycle completed. Sleeping for {interval} seconds.")
+        time.sleep(interval)  # Wait for the specified interval before fetching again
+
+
+# Start the email scheduler in a separate thread
+email_thread = threading.Thread(target=email_scheduler, args=(300,), daemon=True)
+email_thread.start()
 
 # -------------------------------------------------
-# Main Execution
+# Initialize Database and Seed Data
+# -------------------------------------------------
+with app.app_context():
+    initialize_database()
+
+# -------------------------------------------------
+# Run the Flask app
 # -------------------------------------------------
 if __name__ == '__main__':
-    initialize_database()
-    # Start email fetcher thread
-    email_thread = threading.Thread(target=email_fetcher_task)
-    email_thread.daemon = True
-    email_thread.start()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Run the Flask app without the reloader to prevent duplicate threads
+    app.run(debug=True)
 
