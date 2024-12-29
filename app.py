@@ -62,11 +62,18 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "your_default_secret_key")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///db.sqlite3")
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max file size
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 1800,  # Recycle connections after 1800 seconds (30 minutes)
+    # You can add other options like 'pool_size', 'max_overflow' if needed
+}
+
+
 
 # Initialize Extensions
 db = SQLAlchemy(app)
