@@ -444,10 +444,10 @@ def fetch_and_process_emails():
                                     # Fetch settings for OpenAI prompt
                                     patient_setting = get_setting("PATIENT_DETAILS", "")
                                     record_setting = get_setting("RECORD_DETAILS", "")
-                                    patient_fields = [field.strip() for field in patient_setting if field.strip()]
-                                    record_fields = [field.strip() for field in record_setting if field.strip()]
+                                    patient_fields = [field.strip() for field in patient_setting.split(',') if field.strip()]
+                                    record_fields = [field.strip() for field in record_setting.split(',') if field.strip()]
                                     record_types_setting = get_setting("RECORD_TYPES", "")
-                                    record_types = [item.strip() for item in record_types_setting if item.strip()]
+                                    record_types = [item.strip() for item in record_types_setting.split(',') if item.strip()]
 
                                     if not patient_fields and not record_fields:
                                         logger.warning("[WARNING] No fields defined for extraction.")
@@ -493,7 +493,7 @@ def fetch_and_process_emails():
                                         logger.info(f"[INFO] Referral saved with ID {referral.id} and record type '{record_type}'.")
 
                                         # Send CSV email with both Patient Details and Record Details
-                                        forwarding_email = get_setting("SENDGRID_TO_EMAIL", "chris@goldiehealth.com")
+                                        forwarding_email = get_setting("SENDGRID_TO_EMAIL", "you@example.com")
                                         send_csv_email(forwarding_email, data_json.get("patient_details", {}), data_json.get("record_details", {}))
 
                                     except Exception as e:
@@ -600,6 +600,9 @@ def settings():
             if isinstance(field_value, bool):
                 # Store booleans as JSON booleans
                 setting.field_config = json.dumps(field_value)
+            elif isinstance(field_value, int):
+                # Store integers as JSON numbers
+                setting.field_config = json.dumps(field_value)
             else:
                 # Store other types as JSON strings
                 setting.field_config = json.dumps(str(field_value))
@@ -623,6 +626,8 @@ def settings():
                 field = getattr(form, field_name)
                 if isinstance(setting_value, bool):
                     field.data = setting_value
+                elif isinstance(setting_value, int):
+                    field.data = setting_value
                 else:
                     field.data = setting_value
     return render_template('settings.html', form=form)
@@ -636,7 +641,7 @@ def download_referral(referral_id):
         BytesIO(csv_file.getvalue().encode('utf-8')),
         mimetype='text/csv',
         as_attachment=True,
-        attachment_filename=f'referral_{referral_id}.csv'
+        download_name=f'referral_{referral_id}.csv'  # For Flask >= 2.0
     )
 
 @app.route('/download_all')
@@ -648,7 +653,7 @@ def download_all():
         BytesIO(csv_file.getvalue().encode('utf-8')),
         mimetype='text/csv',
         as_attachment=True,
-        attachment_filename='all_referrals.csv'
+        download_name='all_referrals.csv'  # For Flask >= 2.0
     )
 
 # -------------------------------------------------
