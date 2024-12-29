@@ -468,15 +468,22 @@ def fetch_and_process_emails():
                                         data_json = json.loads(extracted_data)
                                         logger.info(f"[INFO] OpenAI extracted data: {data_json}")
 
+                                        # Validate and Normalize Record Type
+                                        valid_record_types = ["Referral", "Patient Intake", "Medical Records Request", "Signed Plan of Care"]
+                                        record_type = data_json.get("record_type", "").strip()
+                                        if record_type not in valid_record_types:
+                                            logger.warning(f"[WARNING] Invalid record type '{record_type}'. Defaulting to 'Unknown'.")
+                                            record_type = "Unknown"
+
                                         # Normalize and save data
                                         referral = Referral(
-                                            record_type=data_json.get("record_type", "Unknown"),
+                                            record_type=record_type,
                                             patient_details=json.dumps(data_json.get("patient_details", {})),
                                             record_details=json.dumps(data_json.get("record_details", {}))
                                         )
                                         db.session.add(referral)
                                         db.session.commit()
-                                        logger.info(f"[INFO] Referral saved with ID {referral.id}.")
+                                        logger.info(f"[INFO] Referral saved with ID {referral.id} and record type '{record_type}'.")
 
                                         # Send CSV email with both Patient Details and Record Details
                                         forwarding_email = get_setting("SENDGRID_TO_EMAIL", "chris@goldiehealth.com")
@@ -491,6 +498,24 @@ def fetch_and_process_emails():
             mail.logout()
         except Exception as e:
             logger.error(f"[ERROR] Failed to fetch and process emails: {e}")
+
+            
+            # Validate and Normalize Record Type
+valid_record_types = ["Referral", "Patient Intake", "Medical Records Request", "Signed Plan of Care"]
+record_type = data_json.get("record_type", "").strip()
+if record_type not in valid_record_types:
+    logger.warning(f"[WARNING] Invalid record type '{record_type}'. Defaulting to 'Unknown'.")
+    record_type = "Unknown"
+
+# Normalize and save data
+referral = Referral(
+    record_type=record_type,
+    patient_details=json.dumps(data_json.get("patient_details", {})),
+    record_details=json.dumps(data_json.get("record_details", {}))
+)
+db.session.add(referral)
+db.session.commit()
+logger.info(f"[INFO] Referral saved with ID {referral.id} and record type '{record_type}'.")
 
 
 def process_pdf(pdf_path, dpi=200):
@@ -510,17 +535,19 @@ def process_pdf(pdf_path, dpi=200):
 def generate_openai_prompt(text, patient_fields, record_fields):
     patient_prompts = ', '.join(patient_fields)
     record_prompts = ', '.join(record_fields)
+    record_types = ["Referral", "Patient Intake", "Medical Records Request", "Signed Plan of Care"]
 
     prompt = f"""
-Extract the following patient details from the text: {patient_prompts}.
-Extract the following record details: {record_prompts}.
+Based on the following text, determine the record type from the following options: {', '.join(record_types)}.
+Then, extract the following patient details: {patient_prompts}.
+Also, extract the following record details: {record_prompts}.
 
 Text:
 {text}
 
 Format the output as JSON:
 {{
-    "record_type": "Referral",
+    "record_type": "",  # One of {', '.join(record_types)}
     "patient_details": {{
         {', '.join([f'"{field}": ""' for field in patient_fields])}
     }},
