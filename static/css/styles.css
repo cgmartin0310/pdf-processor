@@ -34,5 +34,13 @@ body {
     padding: 0;
 }
 
-/* Additional custom styles can be added here */
+/* Logo styles */
+.logo {
+    max-width: 150px; /* Adjust the size as needed */
+    height: auto;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
 
+/* Additional custom styles can be added here */

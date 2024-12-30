@@ -4,14 +4,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Login - PDF Processor</title>
+    <title>Login - Referral App</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
-		<div class="container mt-5">
-		    <div class="text-center">
-		    <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" class="logo">
-		</div>
+<div class="container mt-5">
+    <div class="text-center mb-4">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" class="logo">
+    </div>
     <form method="POST">
         {{ form.hidden_tag() }}
         <div class="form-group">
