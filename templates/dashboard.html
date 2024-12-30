@@ -19,7 +19,7 @@
 <body>
     <!-- Navigation Bar -->
     <nav class="navbar navbar-expand-lg navbar-light bg-light">
-        <!-- Replace "PDF Processor App" with the logo -->
+        <!-- Logo in the navbar -->
         <a class="navbar-brand" href="#">
             <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" id="app-logo">
         </a>
@@ -50,11 +50,6 @@
 
     <!-- Container for Dashboard Content -->
     <div class="container mt-5">
-        <!-- Replace the "Welcome to the Dashboard" heading with the logo -->
-        <div class="text-center mb-4">
-            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" class="logo">
-        </div>
-
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
@@ -68,9 +63,9 @@
           {% endif %}
         {% endwith %}
 
-        <!-- Example: Displaying Referrals -->
+        <!-- Changed "Referrals" to "Documents" -->
         <div class="mt-4">
-            <h2>Referrals</h2>
+            <h2>Documents</h2>
             <div class="table-responsive">
                 <table class="table table-bordered table-hover">
                     <thead class="thead-light">
